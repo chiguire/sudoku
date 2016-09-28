@@ -1,34 +1,35 @@
 module Sudoku where
 
+import Data.List (nub)
+
 data SquarePart = UL | UC | UR | CL | CC | CR | DL | DC | DR deriving (Show, Eq, Read)
 data SudokuPart = Square SquarePart | Column Int | Row Int deriving (Show, Eq, Read)
 
-removeAll :: (Eq a) => a -> [a] -> [a]
-removeAll _ [] = []
-removeAll e (x:xs)
-    | e == x = removeAll e xs
-    | otherwise = (x:removeAll e xs)
+-- Returns a list with all the repeated elements
+getRepeated :: (Eq a) => [a] -> [a]
+getRepeated [] = []
+getRepeated (x:xs) 
+    | x `elem` xs = (x: getRepeated xs)
+    | otherwise   = getRepeated(xs)
 
-whichNonUnique :: (Eq a) => [a] -> [a]
-whichNonUnique [] = []
-whichNonUnique (x:xs)
-    | x `elem` xs = (x: (whichNonUnique $ removeAll x xs))
-    | otherwise = whichNonUnique xs
-
-allDifferent :: (Eq a) => [a] -> Bool
-allDifferent [] = True
-allDifferent (x:xs) = x `notElem` xs && allDifferent xs
-
-isValidSquare :: (Eq a) => [a] -> Bool
-isValidSquare [ul, uc, ur, cl, cc, cr, dl, dc, dr] = allDifferent [ul, uc, ur, cl, cc, cr, dl, dc, dr]
+-- Checks a sudoku batch to check for repeated elements
+isValidBatch :: (Eq a) => [a] -> (Bool, [a])
+isValidBatch batch@[ul, uc, ur, cl, cc, cr, dl, dc, dr] = (valid, repeated)
+            where
+                valid = length repeated == 0
+                repeated = getRepeated batch
 
 boardData (l, _) = l
 boardMetadata (_, m) = m
 
-errorReport :: (Eq a) => ([a], SudokuPart) -> Maybe (SudokuPart, [a])
-errorReport (square, metadata)
-    | allDifferent square = Nothing
-    | otherwise           = Just (metadata, whichNonUnique square)
+-- In case of error, pack the metadata and the repeated values
+errorReport :: (Eq a) => Bool -> [a] -> SudokuPart -> Maybe (SudokuPart, [a])
+errorReport True _ _ = Nothing
+errorReport False repeated metadata = Just (metadata, repeated)
+
+checkBatch :: (Eq a) => ([a], SudokuPart) -> Maybe (SudokuPart, [a])
+checkBatch (batch, metadata) = errorReport isValid repeated metadata
+            where (isValid, repeated) = isValidBatch batch
 
 decomposeBoard [ul@[ul_ul, ul_uc, ul_ur, ul_cl, ul_cc, ul_cr, ul_dl, ul_dc, ul_dr]
                ,uc@[uc_ul, uc_uc, uc_ur, uc_cl, uc_cc, uc_cr, uc_dl, uc_dc, uc_dr]
@@ -70,10 +71,13 @@ decomposeBoard [ul@[ul_ul, ul_uc, ul_ur, ul_cl, ul_cc, ul_cr, ul_dl, ul_dc, ul_d
                , ([ur_ur, ur_cr, ur_dr, cr_ur, cr_cr, cr_dr, dr_ur, dr_cr, dr_dr], Column 9)
                ]
 
+-- Checks if a board is valid, if not, it returns all the batches that have repeated elements
 isValidBoard :: (Eq a) => [[a]] -> (Bool, [Maybe (SudokuPart, [a])])
-isValidBoard board = (foldr (&&) True $ map (isValidSquare . boardData) $ decomposeBoard board
-                     ,map (errorReport) $ decomposeBoard board
-                     )
+isValidBoard board = (isValid, finalReports) 
+                     where 
+                     isValid = all (==Nothing) reports
+                     finalReports = filter (/=Nothing) reports
+                     reports = map checkBatch $ decomposeBoard board
 
 -- findSolution :: (Eq a) => [[a]] -> [[a]] -- Specify 0 for empty spaces
 -- findSolution [ul@[ul_ul, ul_uc, ul_ur, ul_cl, ul_cc, ul_cr, ul_dl, ul_dc, ul_dr]
